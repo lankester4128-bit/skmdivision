@@ -1,1 +1,416 @@
 
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>초등 나눗셈 마스터 게임</title>
+  
+  <!-- Tailwind CSS (디자인 자동 적용) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM (리액트 코어 라이브러리) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel (브라우저에서 리액트 문법을 즉시 번역) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* 숫자 입력칸의 기본 화살표(스피너) 제거 */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- 게임이 화면에 나타날 위치 -->
+  <div id="root"></div>
+
+  <!-- 게임 로직 스크립트 -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- 외부 아이콘 라이브러리 대체용 SVG 컴포넌트 ---
+    const CheckCircle2 = ({ className }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>;
+    const XCircle = ({ className }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>;
+    const ArrowRight = ({ className }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>;
+    const ArrowLeft = ({ className }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
+    const Trophy = ({ className }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>;
+    const Star = ({ className }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+    const Lightbulb = ({ className }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.9 1.2 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>;
+
+    // --- 게임 설정 및 메인 로직 ---
+    const STAGES = [
+      { id: 1, title: '1단계: 구구단 나눗셈', desc: '곱셈구구 내에서의 나눗셈' },
+      { id: 2, title: '2단계: 몇십 ÷ 몇', desc: '내림 없고 나머지 없는 나눗셈' },
+      { id: 3, title: '3단계: 몇십몇 ÷ 몇', desc: '내림 없고 나머지 없는 나눗셈' },
+      { id: 4, title: '4단계: 몇십몇 ÷ 몇 (내림)', desc: '내림은 있지만 나머지는 없는 나눗셈' },
+      { id: 5, title: '5단계: 몇십몇 ÷ 몇 (나머지)', desc: '내림도 있고 나머지도 있는 나눗셈' },
+      { id: 6, title: '6단계: 몇백몇십몇 ÷ 몇', desc: '세 자리 수 나누기 한 자리 수' }
+    ];
+
+    const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+    function App() {
+      const [stage, setStage] = useState(1);
+      const [problem, setProblem] = useState({ num1: 0, num2: 0, q: 0, r: 0, qDigits: [], vSteps: [], n1Str: '' });
+      
+      const [qInput, setQInput] = useState('');
+      const [rInput, setRInput] = useState('');
+      
+      const [vQInputs, setVQInputs] = useState([]);
+      const [vSubInputs, setVSubInputs] = useState([]);
+      const [vRemInput, setVRemInput] = useState('');
+      
+      const [feedback, setFeedback] = useState('idle');
+      const [score, setScore] = useState(0);
+      
+      const firstVQRef = useRef(null);
+
+      const generateProblem = (currentStage) => {
+        let num1, num2, q, r;
+        let safeguard = 0;
+
+        while (safeguard < 1000) {
+          safeguard++;
+          if (currentStage === 1) {
+            num2 = randomInt(2, 9);
+            q = randomInt(2, 9);
+            num1 = num2 * q;
+            r = 0;
+            break;
+          } else if (currentStage === 2) {
+            num2 = randomInt(2, 4);
+            let qTens = randomInt(1, Math.floor(9 / num2));
+            q = qTens * 10;
+            num1 = num2 * q;
+            r = 0;
+            break;
+          } else if (currentStage === 3) {
+            num2 = randomInt(2, 4);
+            let qTens = randomInt(1, Math.floor(9 / num2));
+            let qOnes = randomInt(1, Math.floor(9 / num2));
+            q = qTens * 10 + qOnes;
+            num1 = num2 * q;
+            r = 0;
+            break;
+          } else if (currentStage === 4) {
+            num2 = randomInt(2, 9);
+            q = randomInt(11, 49);
+            num1 = num2 * q;
+            r = 0;
+            if (num1 >= 10 && num1 <= 99 && Math.floor(num1 / 10) % num2 !== 0) break;
+          } else if (currentStage === 5) {
+            num2 = randomInt(2, 9);
+            q = randomInt(11, 49);
+            r = randomInt(1, num2 - 1);
+            num1 = num2 * q + r;
+            if (num1 >= 10 && num1 <= 99 && Math.floor(num1 / 10) % num2 !== 0) break;
+          } else if (currentStage === 6) {
+            num2 = randomInt(2, 9);
+            q = randomInt(12, 499);
+            r = randomInt(0, num2 - 1);
+            num1 = num2 * q + r;
+            if (num1 >= 100 && num1 <= 999) break;
+          }
+        }
+
+        const n1Str = num1.toString();
+        let currentVal = 0;
+        let qDigits = [];
+        let vSteps = [];
+
+        for (let i = 0; i < n1Str.length; i++) {
+          currentVal = currentVal * 10 + parseInt(n1Str[i], 10);
+          if (currentVal >= num2 || i === n1Str.length - 1 || vSteps.length > 0) {
+            let qDigit = Math.floor(currentVal / num2);
+            qDigits.push({ digit: qDigit, idx: i });
+            let subVal = qDigit * num2;
+            vSteps.push({
+              dividend: currentVal,
+              subVal: subVal,
+              rem: currentVal - subVal,
+              idx: i
+            });
+            currentVal = currentVal - subVal;
+          }
+        }
+
+        setProblem({ num1, num2, q, r, qDigits, vSteps, n1Str });
+        setQInput('');
+        setRInput('');
+        setVQInputs(new Array(qDigits.length).fill(''));
+        setVSubInputs(new Array(vSteps.length).fill(''));
+        setVRemInput('');
+        setFeedback('idle');
+      };
+
+      useEffect(() => {
+        generateProblem(stage);
+        setScore(0);
+      }, [stage]);
+
+      useEffect(() => {
+        if (feedback === 'idle' && firstVQRef.current) {
+          firstVQRef.current.focus();
+        }
+      }, [feedback, problem]);
+
+      const handleVQChange = (index, value) => {
+        const newInputs = [...vQInputs];
+        newInputs[index] = value;
+        setVQInputs(newInputs);
+      };
+
+      const handleVSubChange = (index, value) => {
+        const newInputs = [...vSubInputs];
+        newInputs[index] = value;
+        setVSubInputs(newInputs);
+      };
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!qInput) return;
+
+        const userQ = parseInt(qInput, 10);
+        const userR = rInput === '' ? 0 : parseInt(rInput, 10);
+        
+        const isCorrectVQ = problem.qDigits.every((qObj, i) => parseInt(vQInputs[i], 10) === qObj.digit);
+        const isCorrectVSub = problem.vSteps.every((step, i) => parseInt(vSubInputs[i], 10) === step.subVal);
+        const isCorrectVRem = parseInt(vRemInput, 10) === problem.r;
+
+        const isCorrectQ = userQ === problem.q;
+        const isCorrectR = userR === problem.r;
+
+        if (isCorrectQ && isCorrectR && isCorrectVQ && isCorrectVSub && isCorrectVRem) {
+          setFeedback('correct');
+          setScore((s) => s + 1);
+          setTimeout(() => {
+            generateProblem(stage);
+          }, 1500);
+        } else {
+          setFeedback('incorrect');
+          setTimeout(() => {
+            setFeedback('idle');
+          }, 1500);
+        }
+      };
+
+      const handleNextStage = () => { if (stage < 6) setStage(stage + 1); };
+      const handlePrevStage = () => { if (stage > 1) setStage(stage - 1); };
+
+      const showRemainderInput = stage >= 5;
+
+      return (
+        <div className="min-h-screen bg-blue-50 flex items-center justify-center p-4 font-sans text-gray-800">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl overflow-hidden border-4 border-blue-200">
+            
+            <div className="bg-blue-500 text-white p-6 flex justify-between items-center">
+              <button onClick={handlePrevStage} disabled={stage === 1} className={`p-2 rounded-full transition-colors ${stage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}>
+                <ArrowLeft className="w-6 h-6" />
+              </button>
+              <div className="text-center">
+                <h1 className="text-2xl font-bold flex items-center justify-center gap-2">
+                  <Trophy className="w-6 h-6 text-yellow-300" />
+                  {STAGES[stage - 1].title}
+                </h1>
+                <p className="text-blue-100 mt-1 text-sm">{STAGES[stage - 1].desc}</p>
+              </div>
+              <button onClick={handleNextStage} disabled={stage === 6} className={`p-2 rounded-full flex items-center gap-1 transition-colors ${stage === 6 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600 bg-blue-700'}`}>
+                <span className="hidden sm:inline font-bold">다음 단계</span>
+                <ArrowRight className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 sm:p-8 flex flex-col items-center">
+              
+              <div className="flex items-center gap-2 mb-6 text-yellow-500 bg-yellow-50 px-4 py-2 rounded-full font-bold shadow-sm">
+                <Star className="w-5 h-5 fill-current" />
+                현재 단계 정답 수: {score}
+              </div>
+
+              <form onSubmit={handleSubmit} className="w-full flex flex-col items-center gap-8">
+                
+                <div className="flex flex-wrap justify-center items-center gap-2 sm:gap-4 text-4xl sm:text-6xl font-extrabold text-blue-900 bg-blue-50/50 p-6 rounded-3xl w-full border-2 border-blue-100">
+                  <span>{problem.num1}</span>
+                  <span className="text-blue-400">÷</span>
+                  <span>{problem.num2}</span>
+                  <span className="text-blue-400">=</span>
+                  
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={qInput}
+                      onChange={(e) => setQInput(e.target.value)}
+                      className="w-20 sm:w-28 text-3xl text-center border-b-4 border-blue-400 focus:border-blue-600 bg-transparent outline-none transition-colors placeholder:text-xl sm:placeholder:text-2xl placeholder:font-medium placeholder:text-blue-300"
+                      placeholder="몫"
+                      disabled={feedback === 'correct'}
+                    />
+                    {showRemainderInput && (
+                      <>
+                        <span className="text-gray-400 text-3xl sm:text-5xl ml-2">...</span>
+                        <input
+                          type="number"
+                          value={rInput}
+                          onChange={(e) => setRInput(e.target.value)}
+                          className="w-20 sm:w-28 text-3xl text-center border-b-4 border-green-400 focus:border-green-600 bg-transparent outline-none transition-colors placeholder:text-xl sm:placeholder:text-2xl placeholder:font-medium placeholder:text-green-300"
+                          placeholder="나머지"
+                          disabled={feedback === 'correct'}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {problem.n1Str && (
+                  <div className="w-full max-w-sm bg-indigo-50/70 rounded-2xl p-6 border-2 border-indigo-100 flex flex-col gap-6 shadow-sm items-center">
+                    <div className="flex items-center gap-2 text-indigo-700 font-bold text-lg self-start mb-2">
+                      <Lightbulb className="w-5 h-5" />
+                      <span>세로셈으로 풀기 (빈칸 채우기)</span>
+                    </div>
+
+                    <div 
+                      className="grid gap-y-1 font-mono text-3xl font-bold text-gray-800"
+                      style={{ gridTemplateColumns: `repeat(${problem.n1Str.length + 2}, minmax(2rem, 2.5rem))` }}
+                    >
+                      {problem.qDigits.map((qObj, qIndex) => (
+                        <div key={`q-${qObj.idx}`} style={{ gridColumn: qObj.idx + 3 }} className="flex justify-center pb-2">
+                          <input
+                            ref={qIndex === 0 ? firstVQRef : null}
+                            type="number"
+                            className="w-full h-12 text-3xl text-center bg-white border-2 border-indigo-300 rounded-md focus:border-indigo-500 focus:bg-indigo-50 outline-none text-indigo-700"
+                            value={vQInputs[qIndex] || ''}
+                            onChange={(e) => handleVQChange(qIndex, e.target.value.slice(0, 1))}
+                            disabled={feedback === 'correct'}
+                          />
+                        </div>
+                      ))}
+
+                      <div style={{ gridColumn: 1 }} className="text-center text-blue-800 flex items-end justify-center pb-1">{problem.num2}</div>
+                      <div style={{ gridColumn: 2 }} className="text-center text-blue-800 font-sans text-4xl font-light flex items-end justify-center pb-1">)</div>
+                      {problem.n1Str.split('').map((char, i) => (
+                        <div key={`d-${i}`} style={{ gridColumn: i + 3 }} className="text-center border-t-4 border-blue-800 pt-2 text-blue-900">
+                          {char}
+                        </div>
+                      ))}
+
+                      {problem.vSteps.map((step, stepIdx) => {
+                        const divStr = step.dividend.toString();
+                        return (
+                          <React.Fragment key={`step-${stepIdx}`}>
+                            {stepIdx > 0 && divStr.split('').map((char, i) => {
+                              const col = step.idx + 4 - divStr.length + i;
+                              return (
+                                <div key={`div-${stepIdx}-${i}`} style={{ gridColumn: col }} className="text-center text-gray-700 pt-2">
+                                  {char}
+                                </div>
+                              );
+                            })}
+
+                            <div 
+                              style={{ gridColumn: `3 / span ${step.idx + 1}` }} 
+                              className="border-b-4 border-gray-400 pb-2 mt-1"
+                            >
+                              <div className="relative w-full h-12 bg-white border-2 border-indigo-200 rounded-md focus-within:border-indigo-500 focus-within:bg-indigo-50 transition-colors">
+                                <div className="absolute inset-0 flex pointer-events-none">
+                                  {(vSubInputs[stepIdx] || '').toString().padStart(step.idx + 1, ' ').split('').map((char, i) => (
+                                    <div key={i} className="flex-1 flex items-center justify-center text-3xl font-mono text-indigo-700 pointer-events-none">
+                                      {char !== ' ' ? char : ''}
+                                    </div>
+                                  ))}
+                                </div>
+                                <input
+                                  type="number"
+                                  className="absolute inset-0 w-full h-full bg-transparent text-transparent caret-indigo-700 outline-none text-right px-2"
+                                  value={vSubInputs[stepIdx] || ''}
+                                  onChange={(e) => handleVSubChange(stepIdx, e.target.value.slice(0, step.idx + 1))}
+                                  disabled={feedback === 'correct'}
+                                />
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+
+                      <div style={{ gridColumn: `3 / span ${problem.n1Str.length}` }} className="pt-2">
+                        <div className="relative w-full h-12 bg-white border-2 border-green-300 rounded-md focus-within:border-green-500 focus-within:bg-green-50 transition-colors">
+                          <div className="absolute inset-0 flex pointer-events-none">
+                            {vRemInput.toString().padStart(problem.n1Str.length, ' ').split('').map((char, i) => (
+                              <div key={i} className="flex-1 flex items-center justify-center text-3xl font-mono text-green-700 pointer-events-none">
+                                {char !== ' ' ? char : ''}
+                              </div>
+                            ))}
+                          </div>
+                          <input
+                            type="number"
+                            className="absolute inset-0 w-full h-full bg-transparent text-transparent caret-green-700 outline-none text-right px-2 placeholder:text-sm placeholder:font-medium placeholder:text-green-400/70"
+                            value={vRemInput}
+                            onChange={(e) => setVRemInput(e.target.value.slice(0, 1))}
+                            placeholder="나머지"
+                            disabled={feedback === 'correct'}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <button 
+                  type="submit"
+                  className="mt-2 w-full max-w-xs bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg transform transition active:scale-95 text-xl"
+                >
+                  정답 확인
+                </button>
+              </form>
+
+              <div className="h-16 mt-4 flex items-center justify-center w-full">
+                {feedback === 'correct' && (
+                  <div className="flex items-center gap-3 text-green-600 animate-bounce">
+                    <CheckCircle2 className="w-10 h-10" />
+                    <span className="text-3xl font-extrabold">참 잘했어요!</span>
+                  </div>
+                )}
+                {feedback === 'incorrect' && (
+                  <div className="flex items-center gap-3 text-red-500 animate-pulse">
+                    <XCircle className="w-10 h-10" />
+                    <span className="text-2xl font-bold">틀린 부분을 찾아서 다시 써볼까요?</span>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            <div className="bg-gray-100 p-4 flex justify-between gap-1">
+              {STAGES.map((s) => (
+                <div 
+                  key={s.id} 
+                  onClick={() => setStage(s.id)}
+                  className={`flex-1 h-3 rounded-full cursor-pointer transition-all ${
+                    stage === s.id ? 'bg-blue-500 scale-110' : 
+                    stage > s.id ? 'bg-blue-300' : 'bg-gray-300'
+                  }`}
+                  title={s.title}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // React 앱 실행
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
